@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0e0e10;
+  --bg-soft: #161618;
+  --bg-elev: #1c1c20;
+  --border: #2a2a30;
+  --text: #ececec;
+  --text-dim: #8a8a92;
+  --accent: #ffffff;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { border-color: var(--border); }
+
+.btn {
+  @apply inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-normal transition;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+.btn:hover { background: #25252b; }
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn-primary:hover { background: #d4d4d4; }
+.btn-danger {
+  background: transparent;
+  color: #f87171;
+  border-color: #3a2222;
+}
+.btn-danger:hover { background: #2a1717; }
+
+.input {
+  @apply w-full px-3 py-2 rounded-md text-sm outline-none transition;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.input:focus { border-color: #4a4a55; }
+
+.card {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.muted { color: var(--text-dim); }
+
+a { color: inherit; text-decoration: none; }
