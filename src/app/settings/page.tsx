@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Trash2, Plus, Wand2, Save, Check, AlertCircle, X, Star, StarOff, RotateCcw } from "lucide-react";
+import { Trash2, Plus, Wand2, Save, Check, AlertCircle, X, Star, StarOff, RotateCcw, ChevronDown, ChevronRight, Info, Copy } from "lucide-react";
 import Shell from "@/components/Shell";
 import { settings as store, useSettings, useIsClient, type Mailbox, type Settings } from "@/lib/store";
 
@@ -21,6 +21,104 @@ const toDraft = (s: Settings): Draft => ({
   mailboxes: s.mailboxes.map(m => ({ ...m })),
 });
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+function CopyBtn({ value }: { value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500); } catch {}
+      }}
+      className="muted hover:text-white p-1"
+      aria-label="copia"
+      title="copia"
+    >
+      {done ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+    </button>
+  );
+}
+
+function DomainHelp() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs"
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <Info size={12} className="muted" />
+        <span>Come collegare un dominio a Catchmail</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-1 text-xs leading-relaxed flex flex-col gap-3" style={{ borderTop: "1px solid var(--border)" }}>
+          <p className="muted">
+            Per ricevere posta su un tuo dominio (es. <code className="px-1 rounded" style={{ background: "var(--bg-elev)" }}>mail.example.com</code>),
+            devi puntare i record MX a Catchmail dal pannello DNS del tuo provider (Cloudflare, OVH, Aruba, ecc.).
+          </p>
+
+          <div>
+            <div className="font-medium mb-1">1. Scegli il sottodominio</div>
+            <p className="muted">
+              Consigliato un sottodominio dedicato, es. <code className="px-1 rounded" style={{ background: "var(--bg-elev)" }}>mail.tuosito.com</code>.
+              Le caselle saranno del tipo <code className="px-1 rounded" style={{ background: "var(--bg-elev)" }}>qualunque@mail.tuosito.com</code>.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">2. Aggiungi il record MX</div>
+            <p className="muted mb-2">Nel pannello DNS crea un nuovo record con questi valori:</p>
+            <div className="rounded-md overflow-x-auto" style={{ background: "var(--bg-elev)", border: "1px solid var(--border)" }}>
+              <table className="text-[11px] w-full">
+                <tbody>
+                  <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-3 py-1.5 muted w-32">Tipo</td>
+                    <td className="px-3 py-1.5 flex items-center gap-2"><code>MX</code> <CopyBtn value="MX" /></td>
+                  </tr>
+                  <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-3 py-1.5 muted">Nome / Host</td>
+                    <td className="px-3 py-1.5 flex items-center gap-2"><code>mail</code> <CopyBtn value="mail" /> <span className="muted">(il sottodominio, o <code>@</code> per la root)</span></td>
+                  </tr>
+                  <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-3 py-1.5 muted">Server di posta</td>
+                    <td className="px-3 py-1.5 flex items-center gap-2"><code>smtp.catchmail.io</code> <CopyBtn value="smtp.catchmail.io" /></td>
+                  </tr>
+                  <tr className="border-b" style={{ borderColor: "var(--border)" }}>
+                    <td className="px-3 py-1.5 muted">Priorità</td>
+                    <td className="px-3 py-1.5 flex items-center gap-2"><code>10</code> <CopyBtn value="10" /></td>
+                  </tr>
+                  <tr>
+                    <td className="px-3 py-1.5 muted">TTL</td>
+                    <td className="px-3 py-1.5"><code>Auto</code> <span className="muted">(o 3600)</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="muted mt-2">
+              Se usi Cloudflare disattiva il proxy (nuvoletta grigia, <em>Solo DNS</em>) — i record MX non possono essere proxati.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">3. Attendi la propagazione</div>
+            <p className="muted">
+              Da pochi minuti fino a qualche ora. Verifica con <code className="px-1 rounded" style={{ background: "var(--bg-elev)" }}>dig MX mail.tuosito.com</code> o un controllo MX online.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">4. Aggiungi il dominio qui sotto</div>
+            <p className="muted">
+              Inserisci il dominio completo (es. <code className="px-1 rounded" style={{ background: "var(--bg-elev)" }}>mail.tuosito.com</code>) nel campo e premi <em>Aggiungi</em>, poi <em>Salva</em>.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -173,6 +271,7 @@ export default function SettingsPage() {
         </Section>
 
         <Section title="Domini" hint="Il primo è il predefinito quando crei una casella. Clicca la stella per renderlo predefinito.">
+          <DomainHelp />
           {draft.domains.length > 0 && (
             <ul className="flex flex-wrap gap-2">
               {draft.domains.map((d, i) => (
