@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Trash2, Plus, Save, AlertCircle, X, RotateCcw, ChevronDown, ChevronRight, Info, Copy } from "lucide-react";
 import Shell from "@/components/Shell";
 import { settings as store, useSettings, useIsClient, type Mailbox, type Settings } from "@/lib/store";
+import { requestNotificationPermission, notifySupported, playBeep } from "@/lib/notify";
 
 const DOMAIN_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
 const LOCAL_RE = /^[a-z0-9._+-]{1,64}$/;
@@ -145,6 +146,46 @@ function DomainHelp() {
   );
 }
 
+function NotificationsSection() {
+  const s = useSettings();
+  const [perm, setPerm] = useState<NotificationPermission | "unsupported">("default");
+
+  useEffect(() => {
+    if (!notifySupported()) setPerm("unsupported");
+    else setPerm(Notification.permission);
+  }, []);
+
+  async function enableNotifications() {
+    const p = await requestNotificationPermission();
+    setPerm(p);
+    if (p === "granted") store.setNotifications(true);
+  }
+
+  function toggleNotif() {
+    if (!s.notifications && perm !== "granted") { enableNotifications(); return; }
+    store.setNotifications(!s.notifications);
+  }
+
+  const canUseNotif = perm === "granted";
+
+  return (
+    <Section title="Notifiche" hint="Avviso desktop e/o suono quando arrivano nuove mail.">
+      <div className="flex items-center gap-3 flex-wrap">
+        <Toggle checked={s.notifications && canUseNotif} onChange={toggleNotif} ariaLabel="notifiche desktop" />
+        <span className="text-sm">Notifiche desktop</span>
+        {perm === "unsupported" && <span className="text-xs muted">non supportato dal browser</span>}
+        {perm === "default" && <button className="btn ml-auto" onClick={enableNotifications}>Concedi permesso</button>}
+        {perm === "denied" && <span className="text-xs text-red-400 ml-auto">Permesso negato. Sbloccalo dalle impostazioni del browser.</span>}
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <Toggle checked={s.sound} onChange={() => store.setSound(!s.sound)} ariaLabel="suono" />
+        <span className="text-sm">Suono</span>
+        <button className="btn ml-auto" onClick={playBeep} type="button">Anteprima</button>
+      </div>
+    </Section>
+  );
+}
+
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
@@ -281,7 +322,7 @@ export default function SettingsPage() {
 
       <div className="p-4 max-w-2xl flex flex-col gap-8">
 
-        <Section title="Polling" hint="Intervallo di aggiornamento delle caselle attive. Catchmail consente 1 richiesta al secondo.">
+        <Section title="Polling" hint="Intervallo di aggiornamento delle caselle attive. Catchmail consente 1 richiesta al secondo. Quando la tab è in background l'intervallo viene moltiplicato per 3.">
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -294,6 +335,9 @@ export default function SettingsPage() {
             <span className="text-sm muted">secondi <span className="text-[10px]">(5–3600)</span></span>
           </div>
         </Section>
+
+        <NotificationsSection />
+
 
         <Section title="Domini" hint="Il primo è il predefinito quando crei una casella. Clicca su un dominio per renderlo predefinito.">
           <DomainHelp />
