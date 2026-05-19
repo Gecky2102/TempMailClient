@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Mail, RefreshCw, AlertCircle, Search, X } from "lucide-react";
-import { useSettings } from "@/lib/store";
+import { Mail, RefreshCw, AlertCircle, Search, X, Pin, PinOff, ChevronLeft, ChevronRight } from "lucide-react";
+import { useSettings, settings as store, pinKey } from "@/lib/store";
 import type { MessageSummary } from "@/lib/catchmail";
 
 type Row = MessageSummary & { _mailbox: string };
@@ -24,6 +24,8 @@ export default function MessageList({ filterAddress }: { filterAddress?: string 
   const [loading, setLoading] = useState(false);
   const [lastFetch, setLastFetch] = useState<number | null>(null);
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const aborter = useRef<AbortController | null>(null);
 
   const targets = useMemo(
@@ -71,6 +73,8 @@ export default function MessageList({ filterAddress }: { filterAddress?: string 
     return () => { clearInterval(iv); aborter.current?.abort(); };
   }, [fetchAll, settings.pollIntervalSec]);
 
+  const pinnedSet = useMemo(() => new Set(settings.pinned), [settings.pinned]);
+
   const rows = useMemo(() => {
     const allowed = new Set(targets.map(t => t.address));
     const acc: Row[] = [];
@@ -78,15 +82,28 @@ export default function MessageList({ filterAddress }: { filterAddress?: string 
       if (!allowed.has(addr)) continue;
       acc.push(...list);
     }
-    acc.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const q = query.trim().toLowerCase();
-    if (!q) return acc;
-    return acc.filter(r =>
-      r.from.toLowerCase().includes(q) ||
-      (r.subject || "").toLowerCase().includes(q) ||
-      r._mailbox.toLowerCase().includes(q)
-    );
-  }, [byBox, targets, query]);
+    const filtered = q
+      ? acc.filter(r =>
+          r.from.toLowerCase().includes(q) ||
+          (r.subject || "").toLowerCase().includes(q) ||
+          r._mailbox.toLowerCase().includes(q)
+        )
+      : acc;
+    filtered.sort((a, b) => {
+      const pa = pinnedSet.has(pinKey(a._mailbox, a.id)) ? 1 : 0;
+      const pb = pinnedSet.has(pinKey(b._mailbox, b.id)) ? 1 : 0;
+      if (pa !== pb) return pb - pa;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
+    return filtered;
+  }, [byBox, targets, query, pinnedSet]);
+
+  useEffect(() => { setPage(1); }, [query, filterAddress, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = useMemo(() => rows.slice((safePage - 1) * pageSize, safePage * pageSize), [rows, safePage, pageSize]);
 
   return (
     <div className="flex flex-col">
@@ -133,25 +150,73 @@ export default function MessageList({ filterAddress }: { filterAddress?: string 
       )}
 
       <ul className="divide-y" style={{ borderColor: "var(--border)" }}>
-        {rows.map(r => (
-          <li key={`${r._mailbox}:${r.id}`}>
-            <Link
-              prefetch={false}
-              href={`/message/${encodeURIComponent(r._mailbox)}/${encodeURIComponent(r.id)}`}
-              className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 px-4 py-3 hover:bg-[var(--bg-soft)]"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm truncate">{r.from}</span>
-                  <span className="text-[10px] muted truncate">{r._mailbox}</span>
+        {pageRows.map(r => {
+          const key = pinKey(r._mailbox, r.id);
+          const pinned = pinnedSet.has(key);
+          return (
+            <li key={`${r._mailbox}:${r.id}`} className="flex items-stretch" style={{ background: pinned ? "var(--bg-soft)" : undefined }}>
+              <Link
+                prefetch={false}
+                href={`/message/${encodeURIComponent(r._mailbox)}/${encodeURIComponent(r.id)}`}
+                className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 px-4 py-3 hover:bg-[var(--bg-soft)]"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    {pinned && <Pin size={10} className="muted shrink-0" fill="currentColor" />}
+                    <span className="text-sm truncate">{r.from}</span>
+                    <span className="text-[10px] muted truncate">{r._mailbox}</span>
+                  </div>
+                  <div className="text-sm muted truncate">{r.subject || "(nessun oggetto)"}</div>
                 </div>
-                <div className="text-sm muted truncate">{r.subject || "(nessun oggetto)"}</div>
-              </div>
-              <div className="text-xs muted shrink-0">{formatDate(r.date)}</div>
-            </Link>
-          </li>
-        ))}
+                <div className="text-xs muted shrink-0">{formatDate(r.date)}</div>
+              </Link>
+              <button
+                onClick={() => store.togglePin(key)}
+                className="px-3 muted hover:text-white"
+                aria-label={pinned ? "rimuovi pin" : "pinna"}
+                title={pinned ? "Rimuovi pin" : "Pinna in alto"}
+              >
+                {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+              </button>
+            </li>
+          );
+        })}
       </ul>
+
+      {rows.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-3 border-t text-xs" style={{ borderColor: "var(--border)" }}>
+          <span className="muted">
+            {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, rows.length)} di {rows.length}
+          </span>
+          <select
+            className="input !py-1 !px-2 !w-auto text-xs"
+            value={pageSize}
+            onChange={e => setPageSize(Number(e.target.value))}
+            aria-label="messaggi per pagina"
+          >
+            {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}/pag</option>)}
+          </select>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              className="btn !py-1 !px-2"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              aria-label="pagina precedente"
+            >
+              <ChevronLeft size={12} />
+            </button>
+            <span className="muted px-2">{safePage} / {totalPages}</span>
+            <button
+              className="btn !py-1 !px-2"
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              aria-label="pagina successiva"
+            >
+              <ChevronRight size={12} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

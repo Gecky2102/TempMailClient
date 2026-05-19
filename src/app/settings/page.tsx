@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Trash2, Plus, Wand2, Save, Check, AlertCircle, X, Star, StarOff, RotateCcw, ChevronDown, ChevronRight, Info, Copy } from "lucide-react";
+import { Trash2, Plus, Save, AlertCircle, X, RotateCcw, ChevronDown, ChevronRight, Info, Copy } from "lucide-react";
 import Shell from "@/components/Shell";
 import { settings as store, useSettings, useIsClient, type Mailbox, type Settings } from "@/lib/store";
 
@@ -30,11 +30,36 @@ function CopyBtn({ value }: { value: string }) {
       onClick={async () => {
         try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500); } catch {}
       }}
-      className="muted hover:text-white p-1"
+      className="muted hover:text-white p-1 text-[10px]"
       aria-label="copia"
       title="copia"
     >
-      {done ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+      {done ? <span className="text-green-400">copiato</span> : <Copy size={12} />}
+    </button>
+  );
+}
+
+function Toggle({ checked, onChange, ariaLabel }: { checked: boolean; onChange: () => void; ariaLabel?: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={onChange}
+      className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors"
+      style={{
+        background: checked ? "var(--text)" : "var(--bg-elev)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <span
+        className="inline-block h-3.5 w-3.5 rounded-full transition-transform"
+        style={{
+          background: checked ? "var(--bg)" : "var(--text-dim)",
+          transform: `translateX(${checked ? "18px" : "3px"})`,
+        }}
+      />
     </button>
   );
 }
@@ -238,7 +263,7 @@ export default function SettingsPage() {
               <span className="text-xs text-red-400 flex items-center gap-1"><AlertCircle size={12} /> {error}</span>
             )}
             {!error && savedAt > 0 && !dirty && (
-              <span className="text-xs text-green-400 flex items-center gap-1"><Check size={12} /> Salvato</span>
+              <span className="text-xs text-green-400">Salvato</span>
             )}
             {dirty && (
               <>
@@ -270,26 +295,32 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="Domini" hint="Il primo è il predefinito quando crei una casella. Clicca la stella per renderlo predefinito.">
+        <Section title="Domini" hint="Il primo è il predefinito quando crei una casella. Clicca su un dominio per renderlo predefinito.">
           <DomainHelp />
           {draft.domains.length > 0 && (
-            <ul className="flex flex-wrap gap-2">
+            <ul className="flex flex-col rounded-md overflow-hidden" style={{ border: "1px solid var(--border)" }}>
               {draft.domains.map((d, i) => (
-                <li key={d} className="flex items-center gap-1.5 pl-3 pr-1 py-1 rounded-full text-xs" style={{ background: "var(--bg-elev)", border: "1px solid var(--border)" }}>
+                <li
+                  key={d}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm ${i > 0 ? "border-t" : ""}`}
+                  style={{ borderColor: "var(--border)" }}
+                >
                   <button
+                    type="button"
                     onClick={() => makeDefault(d)}
-                    className={i === 0 ? "text-yellow-400" : "muted hover:text-white"}
-                    title={i === 0 ? "predefinito" : "imposta come predefinito"}
+                    className="flex-1 text-left truncate"
                   >
-                    {i === 0 ? <Star size={12} fill="currentColor" /> : <StarOff size={12} />}
+                    {d}
                   </button>
-                  <span>{d}</span>
+                  {i === 0 && (
+                    <span className="text-[10px] uppercase tracking-wide muted">predefinito</span>
+                  )}
                   <button
                     onClick={() => setDraft(x => ({ ...x, domains: x.domains.filter(y => y !== d) }))}
                     className="muted hover:text-red-400 p-1"
                     aria-label={`rimuovi ${d}`}
                   >
-                    <X size={12} />
+                    <X size={14} />
                   </button>
                 </li>
               ))}
@@ -324,9 +355,7 @@ export default function SettingsPage() {
               </div>
               <input className="input" placeholder="Etichetta (opzionale)" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
               <div className="flex gap-2 flex-wrap">
-                <button className="btn" onClick={() => setNewLocal(randomLocal())}>
-                  <Wand2 size={12} className="mr-1" /> Random
-                </button>
+                <button className="btn" onClick={() => setNewLocal(randomLocal())}>Genera nome</button>
                 <button className="btn ml-auto" onClick={() => { setShowCreate(false); setNewLocal(""); setNewLabel(""); }}>Annulla</button>
                 <button className="btn btn-primary" onClick={addMailbox}>Aggiungi</button>
               </div>
@@ -343,11 +372,10 @@ export default function SettingsPage() {
                   className={`flex items-center gap-3 px-3 py-2.5 ${i > 0 ? "border-t" : ""}`}
                   style={{ borderColor: "var(--border)", background: m.active ? "transparent" : "rgba(0,0,0,0.15)" }}
                 >
-                  <input
-                    type="checkbox"
+                  <Toggle
                     checked={m.active}
                     onChange={() => setDraft(d => ({ ...d, mailboxes: d.mailboxes.map(x => x.address === m.address ? { ...x, active: !x.active } : x) }))}
-                    aria-label="attiva/disattiva"
+                    ariaLabel={`attiva ${m.address}`}
                   />
                   <div className="flex-1 min-w-0">
                     {editing === m.address ? (
@@ -375,9 +403,6 @@ export default function SettingsPage() {
                       </button>
                     )}
                   </div>
-                  <span className={`text-[10px] uppercase tracking-wide ${m.active ? "text-green-400" : "muted"}`}>
-                    {m.active ? "attiva" : "off"}
-                  </span>
                   <button
                     className="muted hover:text-red-400 p-1"
                     onClick={() => setDraft(d => ({ ...d, mailboxes: d.mailboxes.filter(x => x.address !== m.address) }))}
