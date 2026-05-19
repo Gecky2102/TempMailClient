@@ -19,6 +19,8 @@ export async function GET() {
   }
 }
 
+export const POST = PUT;
+
 export async function PUT(req: Request) {
   if (!kvAvailable()) return NextResponse.json({ available: false });
   const body = await req.text();
