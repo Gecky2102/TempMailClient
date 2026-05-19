@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { Trash2, Plus, Wand2, Save, Check, AlertCircle } from "lucide-react";
+import { Trash2, Plus, Wand2, Save, Check, AlertCircle, X, Star, StarOff, RotateCcw } from "lucide-react";
 import Shell from "@/components/Shell";
 import { settings as store, useSettings, useIsClient, type Mailbox, type Settings } from "@/lib/store";
 
@@ -14,43 +14,55 @@ function randomLocal(len = 10) {
   return s;
 }
 
-type Draft = {
-  pollSec: string;
-  domains: string[];
-  mailboxes: Mailbox[];
-};
+type Draft = { pollSec: string; domains: string[]; mailboxes: Mailbox[] };
+const toDraft = (s: Settings): Draft => ({
+  pollSec: String(s.pollIntervalSec),
+  domains: [...s.domains],
+  mailboxes: s.mailboxes.map(m => ({ ...m })),
+});
+const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-function toDraft(s: Settings): Draft {
-  return { pollSec: String(s.pollIntervalSec), domains: [...s.domains], mailboxes: s.mailboxes.map(m => ({ ...m })) };
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-sm font-medium">{title}</h2>
+        {hint && <p className="text-xs muted mt-0.5">{hint}</p>}
+      </div>
+      {children}
+    </section>
+  );
 }
-
-function deepEq(a: unknown, b: unknown) { return JSON.stringify(a) === JSON.stringify(b); }
 
 export default function SettingsPage() {
   const isClient = useIsClient();
   const s = useSettings();
   const initial = useMemo(() => toDraft(s), [s]);
   const [draft, setDraft] = useState<Draft>(initial);
-  const [savedTick, setSavedTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState(0);
 
   const [domainInput, setDomainInput] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
   const [newLocal, setNewLocal] = useState("");
   const [newDomain, setNewDomain] = useState("");
   const [newLabel, setNewLabel] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState("");
 
   useEffect(() => { setDraft(toDraft(s)); }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => {
-    if (!draft.domains.includes(newDomain) && draft.domains[0]) setNewDomain(draft.domains[0]);
-  }, [draft.domains, newDomain]);
+    if (!savedAt) return;
+    const t = setTimeout(() => setSavedAt(0), 2200);
+    return () => clearTimeout(t);
+  }, [savedAt]);
 
-  const dirty = !deepEq(draft, initial);
+  const dirty = !eq(draft, initial);
 
   function validate(): string | null {
-    const trimmed = draft.pollSec.trim();
-    if (trimmed === "") return "Polling: inserisci un numero";
-    const n = Number(trimmed);
+    const t = draft.pollSec.trim();
+    if (t === "") return "Polling: inserisci un numero";
+    const n = Number(t);
     if (!Number.isInteger(n)) return "Polling: deve essere un intero";
     if (n < 5) return "Polling: minimo 5 secondi";
     if (n > 3600) return "Polling: massimo 3600 secondi";
@@ -69,16 +81,16 @@ export default function SettingsPage() {
     const v = validate();
     if (v) { setError(v); return; }
     setError(null);
-    const n = Number(draft.pollSec.trim());
-    store.set(prev => ({ ...prev, pollIntervalSec: n, domains: [...draft.domains], mailboxes: draft.mailboxes.map(m => ({ ...m })) }));
-    setSavedTick(t => t + 1);
+    store.set(prev => ({
+      ...prev,
+      pollIntervalSec: Number(draft.pollSec.trim()),
+      domains: [...draft.domains],
+      mailboxes: draft.mailboxes.map(m => ({ ...m })),
+    }));
+    setSavedAt(Date.now());
   }
 
-  useEffect(() => {
-    if (!savedTick) return;
-    const t = setTimeout(() => setSavedTick(0), 2200);
-    return () => clearTimeout(t);
-  }, [savedTick]);
+  function reset() { setDraft(toDraft(s)); setError(null); }
 
   function addDomain() {
     const v = domainInput.trim().toLowerCase().replace(/^@/, "");
@@ -90,6 +102,10 @@ export default function SettingsPage() {
     setDomainInput("");
   }
 
+  function makeDefault(d: string) {
+    setDraft(x => ({ ...x, domains: [d, ...x.domains.filter(y => y !== d)] }));
+  }
+
   function addMailbox() {
     const l = newLocal.trim().toLowerCase();
     const dom = newDomain || draft.domains[0];
@@ -99,33 +115,50 @@ export default function SettingsPage() {
     const addr = `${l}@${dom}`;
     if (draft.mailboxes.some(m => m.address.toLowerCase() === addr)) { setError("Casella già esistente"); return; }
     setError(null);
-    setDraft(d => ({ ...d, mailboxes: [...d.mailboxes, { address: addr, label: newLabel.trim() || undefined, active: true, createdAt: Date.now() }] }));
-    setNewLocal(""); setNewLabel("");
+    setDraft(d => ({ ...d, mailboxes: [{ address: addr, label: newLabel.trim() || undefined, active: true, createdAt: Date.now() }, ...d.mailboxes] }));
+    setNewLocal(""); setNewLabel(""); setShowCreate(false);
+  }
+
+  function commitEditLabel(addr: string) {
+    const lbl = editLabel.trim() || undefined;
+    setDraft(d => ({ ...d, mailboxes: d.mailboxes.map(m => m.address === addr ? { ...m, label: lbl } : m) }));
+    setEditing(null);
   }
 
   if (!isClient) return <Shell><div className="p-4 muted text-sm">Caricamento…</div></Shell>;
 
+  const activeCount = draft.mailboxes.filter(m => m.active).length;
+
   return (
     <Shell>
-      <div className="border-b px-4 py-3 flex items-center gap-3 sticky top-0 z-10" style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
-        <h1 className="text-base font-medium">Impostazioni</h1>
-        {error && (
-          <span className="text-xs text-red-400 flex items-center gap-1"><AlertCircle size={12} /> {error}</span>
-        )}
-        {savedTick > 0 && !dirty && (
-          <span className="text-xs text-green-400 flex items-center gap-1"><Check size={12} /> Salvato</span>
-        )}
-        {dirty && (
-          <button onClick={save} className="btn btn-primary ml-auto">
-            <Save size={14} className="mr-1.5" /> Salva
-          </button>
-        )}
+      <div className="sticky top-0 z-10 border-b" style={{ borderColor: "var(--border)", background: "var(--bg)" }}>
+        <div className="flex items-center gap-3 px-4 py-3 flex-wrap">
+          <h1 className="text-base font-medium">Impostazioni</h1>
+          <span className="text-xs muted">{activeCount}/{draft.mailboxes.length} attive · {draft.domains.length} domini</span>
+          <div className="ml-auto flex items-center gap-2">
+            {error && (
+              <span className="text-xs text-red-400 flex items-center gap-1"><AlertCircle size={12} /> {error}</span>
+            )}
+            {!error && savedAt > 0 && !dirty && (
+              <span className="text-xs text-green-400 flex items-center gap-1"><Check size={12} /> Salvato</span>
+            )}
+            {dirty && (
+              <>
+                <button onClick={reset} className="btn" aria-label="annulla modifiche">
+                  <RotateCcw size={12} className="mr-1" /> Annulla
+                </button>
+                <button onClick={save} className="btn btn-primary">
+                  <Save size={14} className="mr-1.5" /> Salva
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
-      <div className="p-4 grid gap-6 max-w-3xl">
-        <section className="card p-4">
-          <h2 className="text-sm font-medium mb-1">Polling</h2>
-          <p className="text-xs muted mb-3">Intervallo aggiornamento (5–3600 s). Catchmail consente max 1 req/s.</p>
+      <div className="p-4 max-w-2xl flex flex-col gap-8">
+
+        <Section title="Polling" hint="Intervallo di aggiornamento delle caselle attive. Catchmail consente 1 richiesta al secondo.">
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -133,76 +166,131 @@ export default function SettingsPage() {
               className="input max-w-[120px]"
               value={draft.pollSec}
               onChange={e => setDraft(d => ({ ...d, pollSec: e.target.value.replace(/[^\d]/g, "") }))}
+              placeholder="30"
             />
-            <span className="text-sm muted">secondi</span>
+            <span className="text-sm muted">secondi <span className="text-[10px]">(5–3600)</span></span>
           </div>
-        </section>
+        </Section>
 
-        <section className="card p-4">
-          <h2 className="text-sm font-medium mb-1">Domini</h2>
-          <p className="text-xs muted mb-3">Il primo è il predefinito.</p>
-          <ul className="flex flex-col gap-1 mb-3">
-            {draft.domains.map(d => (
-              <li key={d} className="flex items-center justify-between text-sm px-3 py-2 rounded-md" style={{ background: "var(--bg-elev)" }}>
-                <span>{d}</span>
-                <button className="btn btn-danger" onClick={() => setDraft(x => ({ ...x, domains: x.domains.filter(y => y !== d) }))}>
-                  <Trash2 size={12} />
-                </button>
-              </li>
-            ))}
-            {draft.domains.length === 0 && <li className="text-xs muted">Nessun dominio.</li>}
-          </ul>
+        <Section title="Domini" hint="Il primo è il predefinito quando crei una casella. Clicca la stella per renderlo predefinito.">
+          {draft.domains.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {draft.domains.map((d, i) => (
+                <li key={d} className="flex items-center gap-1.5 pl-3 pr-1 py-1 rounded-full text-xs" style={{ background: "var(--bg-elev)", border: "1px solid var(--border)" }}>
+                  <button
+                    onClick={() => makeDefault(d)}
+                    className={i === 0 ? "text-yellow-400" : "muted hover:text-white"}
+                    title={i === 0 ? "predefinito" : "imposta come predefinito"}
+                  >
+                    {i === 0 ? <Star size={12} fill="currentColor" /> : <StarOff size={12} />}
+                  </button>
+                  <span>{d}</span>
+                  <button
+                    onClick={() => setDraft(x => ({ ...x, domains: x.domains.filter(y => y !== d) }))}
+                    className="muted hover:text-red-400 p-1"
+                    aria-label={`rimuovi ${d}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="flex gap-2">
-            <input className="input" placeholder="es. mail.example.com" value={domainInput} onChange={e => setDomainInput(e.target.value)} onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addDomain())} />
+            <input
+              className="input"
+              placeholder="es. mail.example.com"
+              value={domainInput}
+              onChange={e => setDomainInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addDomain())}
+            />
             <button className="btn" onClick={addDomain}><Plus size={12} className="mr-1" /> Aggiungi</button>
           </div>
-        </section>
+        </Section>
 
-        <section className="card p-4">
-          <h2 className="text-sm font-medium mb-1">Crea casella</h2>
-          <div className="grid sm:grid-cols-[1fr_auto_1fr] gap-2 items-center">
-            <input className="input" placeholder="nome-locale" value={newLocal} onChange={e => setNewLocal(e.target.value.toLowerCase())} />
-            <span className="text-center muted">@</span>
-            <select className="input" value={newDomain || draft.domains[0] || ""} onChange={e => setNewDomain(e.target.value)} disabled={draft.domains.length === 0}>
-              {draft.domains.length === 0 && <option value="">— nessun dominio —</option>}
-              {draft.domains.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <input className="input mt-2" placeholder="Etichetta (opzionale)" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
-          <div className="flex gap-2 mt-3">
-            <button className="btn" onClick={() => { setNewLocal(randomLocal()); if (!newDomain && draft.domains[0]) setNewDomain(draft.domains[0]); }}>
-              <Wand2 size={12} className="mr-1" /> Suggerisci
+        <Section title={`Caselle (${draft.mailboxes.length})`} hint="Solo le caselle attive vengono interrogate. Clicca l'etichetta per modificarla.">
+          {!showCreate ? (
+            <button className="btn self-start" onClick={() => { setShowCreate(true); setNewLocal(randomLocal()); if (!newDomain && draft.domains[0]) setNewDomain(draft.domains[0]); }}>
+              <Plus size={12} className="mr-1" /> Nuova casella
             </button>
-            <button className="btn" onClick={addMailbox}><Plus size={12} className="mr-1" /> Aggiungi</button>
-          </div>
-        </section>
+          ) : (
+            <div className="card p-3 flex flex-col gap-2">
+              <div className="grid sm:grid-cols-[1fr_auto_1fr] gap-2 items-center">
+                <input className="input" placeholder="nome-locale" value={newLocal} onChange={e => setNewLocal(e.target.value.toLowerCase())} />
+                <span className="text-center muted">@</span>
+                <select className="input" value={newDomain || draft.domains[0] || ""} onChange={e => setNewDomain(e.target.value)} disabled={draft.domains.length === 0}>
+                  {draft.domains.length === 0 && <option value="">— nessun dominio —</option>}
+                  {draft.domains.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <input className="input" placeholder="Etichetta (opzionale)" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
+              <div className="flex gap-2 flex-wrap">
+                <button className="btn" onClick={() => setNewLocal(randomLocal())}>
+                  <Wand2 size={12} className="mr-1" /> Random
+                </button>
+                <button className="btn ml-auto" onClick={() => { setShowCreate(false); setNewLocal(""); setNewLabel(""); }}>Annulla</button>
+                <button className="btn btn-primary" onClick={addMailbox}>Aggiungi</button>
+              </div>
+            </div>
+          )}
 
-        <section className="card p-4">
-          <h2 className="text-sm font-medium mb-3">Caselle ({draft.mailboxes.length})</h2>
-          {draft.mailboxes.length === 0 && <div className="text-sm muted">Nessuna casella.</div>}
-          <ul className="flex flex-col gap-2">
-            {draft.mailboxes.map(m => (
-              <li key={m.address} className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-md" style={{ background: "var(--bg-elev)" }}>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
+          {draft.mailboxes.length === 0 ? (
+            <div className="text-sm muted">Nessuna casella.</div>
+          ) : (
+            <ul className="flex flex-col rounded-md overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+              {draft.mailboxes.map((m, i) => (
+                <li
+                  key={m.address}
+                  className={`flex items-center gap-3 px-3 py-2.5 ${i > 0 ? "border-t" : ""}`}
+                  style={{ borderColor: "var(--border)", background: m.active ? "transparent" : "rgba(0,0,0,0.15)" }}
+                >
                   <input
                     type="checkbox"
                     checked={m.active}
                     onChange={() => setDraft(d => ({ ...d, mailboxes: d.mailboxes.map(x => x.address === m.address ? { ...x, active: !x.active } : x) }))}
+                    aria-label="attiva/disattiva"
                   />
-                  <span className={m.active ? "" : "muted"}>{m.label ? `${m.label} — ` : ""}{m.address}</span>
-                </label>
-                <span className="text-[10px] muted ml-auto">{m.active ? "attiva" : "disattivata"}</span>
-                <button
-                  className="btn btn-danger"
-                  onClick={() => setDraft(d => ({ ...d, mailboxes: d.mailboxes.filter(x => x.address !== m.address) }))}
-                  aria-label="rimuovi"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+                  <div className="flex-1 min-w-0">
+                    {editing === m.address ? (
+                      <input
+                        autoFocus
+                        className="input !py-1 text-sm"
+                        value={editLabel}
+                        onChange={e => setEditLabel(e.target.value)}
+                        onBlur={() => commitEditLabel(m.address)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") commitEditLabel(m.address);
+                          if (e.key === "Escape") setEditing(null);
+                        }}
+                        placeholder="Etichetta"
+                      />
+                    ) : (
+                      <button
+                        className="block text-left w-full"
+                        onClick={() => { setEditing(m.address); setEditLabel(m.label || ""); }}
+                      >
+                        <div className={`text-sm truncate ${m.active ? "" : "muted"}`}>
+                          {m.label || <span className="muted italic">senza etichetta</span>}
+                        </div>
+                        <div className="text-[11px] muted truncate">{m.address}</div>
+                      </button>
+                    )}
+                  </div>
+                  <span className={`text-[10px] uppercase tracking-wide ${m.active ? "text-green-400" : "muted"}`}>
+                    {m.active ? "attiva" : "off"}
+                  </span>
+                  <button
+                    className="muted hover:text-red-400 p-1"
+                    onClick={() => setDraft(d => ({ ...d, mailboxes: d.mailboxes.filter(x => x.address !== m.address) }))}
+                    aria-label="rimuovi"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
       </div>
     </Shell>
   );

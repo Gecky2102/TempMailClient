@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ShieldCheck, ShieldAlert, Paperclip } from "lucide-react";
+import { ArrowLeft, ShieldCheck, ShieldAlert, Paperclip, Trash2 } from "lucide-react";
 import type { MessageDetail } from "@/lib/catchmail";
 
 function fmt(iso: string) {
@@ -13,7 +13,18 @@ export default function MessageView({ mailbox, id }: { mailbox: string; id: stri
   const router = useRouter();
   const [data, setData] = useState<MessageDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  async function onDelete() {
+    if (!confirm("Eliminare definitivamente questo messaggio?")) return;
+    setDeleting(true);
+    try {
+      const r = await fetch(`/api/message?id=${encodeURIComponent(id)}&mailbox=${encodeURIComponent(mailbox)}`, { method: "DELETE" });
+      if (r.ok) router.back();
+      else { const j = await r.json().catch(() => ({})); alert(j.error || "Errore eliminazione"); }
+    } finally { setDeleting(false); }
+  }
 
   useEffect(() => {
     const ac = new AbortController();
@@ -53,9 +64,14 @@ export default function MessageView({ mailbox, id }: { mailbox: string; id: stri
   return (
     <div className="flex flex-col h-full">
       <div className="border-b px-4 py-3 flex flex-col gap-2" style={{ borderColor: "var(--border)" }}>
-        <button className="btn self-start" onClick={() => router.back()}>
-          <ArrowLeft size={14} className="mr-1.5" /> Indietro
-        </button>
+        <div className="flex items-center gap-2">
+          <button className="btn" onClick={() => router.back()}>
+            <ArrowLeft size={14} className="mr-1.5" /> Indietro
+          </button>
+          <button className="btn btn-danger ml-auto" onClick={onDelete} disabled={deleting}>
+            <Trash2 size={14} className="mr-1.5" /> {deleting ? "Elimino…" : "Elimina"}
+          </button>
+        </div>
         <h1 className="text-base font-medium break-words">{data.subject || "(nessun oggetto)"}</h1>
         <div className="text-xs muted flex flex-col gap-0.5">
           <div><span className="muted">Da:</span> {data.from}</div>
