@@ -52,11 +52,22 @@ export async function clearSession() {
   c.delete(COOKIE);
 }
 
+function eqConstantTime(a: string, b: string) {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  const len = Math.max(ab.length, bb.length);
+  const pa = Buffer.alloc(len); ab.copy(pa);
+  const pb = Buffer.alloc(len); bb.copy(pb);
+  return timingSafeEqual(pa, pb) && ab.length === bb.length;
+}
+
 export function checkCredentials(email: string, password: string) {
   const e = process.env.AUTH_EMAIL || "";
   const p = process.env.AUTH_PASSWORD || "";
   if (!e || !p) return false;
-  return email === e && password === p;
+  const okEmail = eqConstantTime(email.toLowerCase(), e.toLowerCase());
+  const okPass = eqConstantTime(password, p);
+  return okEmail && okPass;
 }
 
 export const COOKIE_NAME = COOKIE;
