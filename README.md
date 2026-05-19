@@ -53,6 +53,8 @@ Apri [http://localhost:3000](http://localhost:3000).
 | `AUTH_EMAIL`      | Email per il login al pannello.                                            |
 | `AUTH_PASSWORD`   | Password per il login al pannello.                                         |
 | `SESSION_SECRET`  | Segreto per firmare il cookie di sessione, almeno 32 caratteri casuali.    |
+| `KV_REST_API_URL` | (Opzionale) URL Vercel KV / Upstash Redis per sincronizzare impostazioni e pin tra dispositivi. |
+| `KV_REST_API_TOKEN` | (Opzionale) Token Vercel KV / Upstash Redis. |
 
 Genera il `SESSION_SECRET` con:
 
@@ -66,6 +68,16 @@ openssl rand -hex 32
 2. Importa il progetto su [vercel.com](https://vercel.com).
 3. Imposta le environment variable `AUTH_EMAIL`, `AUTH_PASSWORD`, `SESSION_SECRET`.
 4. Deploy. Nessuna configurazione aggiuntiva richiesta.
+
+### Sincronizzazione tra dispositivi (gratis con Vercel KV)
+
+Senza KV le impostazioni e i pin restano sul singolo browser (badge **locale** nell'header). Per sincronizzarle:
+
+1. Dashboard Vercel → **Storage** → **Create Database** → **KV** (Upstash Redis).
+2. Connetti lo store al progetto: Vercel inietta automaticamente `KV_REST_API_URL` e `KV_REST_API_TOKEN`.
+3. Redeploy. L'app rileva le variabili, idrata lo stato dal cloud al login e salva ogni modifica (debounce 600 ms).
+
+Il free tier di Upstash basta abbondantemente per single-user (centinaia di migliaia di comandi/giorno).
 
 ## Collegare un dominio personalizzato a Catchmail
 

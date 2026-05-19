@@ -1,9 +1,30 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
-import { Inbox, Mail, Settings as SettingsIcon, LogOut, Menu, X } from "lucide-react";
-import { useSettings, useIsClient } from "@/lib/store";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { Inbox, Mail, Settings as SettingsIcon, LogOut, Menu, X, Cloud, CloudOff, RefreshCw } from "lucide-react";
+import { useSettings, useIsClient, hydrateFromServer, subscribeSync, getSyncStatus } from "@/lib/store";
+
+function useSyncStatus() {
+  return useSyncExternalStore(subscribeSync, getSyncStatus, () => "idle" as const);
+}
+
+function SyncBadge() {
+  const status = useSyncStatus();
+  const map: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+    idle: { label: "—", cls: "muted", icon: <Cloud size={11} /> },
+    syncing: { label: "sync", cls: "muted", icon: <RefreshCw size={11} className="animate-spin" /> },
+    saved: { label: "sync", cls: "text-green-400", icon: <Cloud size={11} /> },
+    error: { label: "errore", cls: "text-red-400", icon: <CloudOff size={11} /> },
+    offline: { label: "locale", cls: "muted", icon: <CloudOff size={11} /> },
+  };
+  const m = map[status] || map.idle;
+  return (
+    <span className={`text-[10px] flex items-center gap-1 px-2 py-0.5 rounded ${m.cls}`} title={status === "offline" ? "Sincronizzazione cloud non configurata (Vercel KV mancante). Le impostazioni restano solo su questo dispositivo." : `Sincronizzazione: ${status}`}>
+      {m.icon} {m.label}
+    </span>
+  );
+}
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -11,6 +32,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const settings = useSettings();
   const isClient = useIsClient();
   const [open, setOpen] = useState(false);
+
+  useEffect(() => { hydrateFromServer(); }, []);
 
   async function logout() {
     await fetch("/api/logout", { method: "POST" });
@@ -22,8 +45,9 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   const sidebar = (
     <nav className="flex flex-col gap-1 p-3 h-full">
-      <div className="px-3 py-3 text-sm font-medium tracking-tight flex items-center gap-2">
-        <Mail size={16} /> TempMail
+      <div className="px-3 py-3 flex items-center gap-2">
+        <span className="text-sm font-medium tracking-tight flex items-center gap-2"><Mail size={16} /> TempMail</span>
+        <span className="ml-auto"><SyncBadge /></span>
       </div>
       <div className="px-3 pt-2 pb-1 text-[11px] uppercase muted">Inbox</div>
       <Link href="/inbox" onClick={() => setOpen(false)} prefetch className={itemCls(pathname === "/inbox")}>
